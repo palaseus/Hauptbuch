@@ -1,0 +1,76 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Hauptbuch Blockchain Metrics",
+    "tags": ["hauptbuch", "blockchain"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Block Production Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(hauptbuch_blocks_produced_total[5m])",
+            "legendFormat": "Blocks/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Transaction Throughput",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(hauptbuch_transactions_processed_total[5m])",
+            "legendFormat": "TPS"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Validator Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "hauptbuch_validators_active",
+            "legendFormat": "Active Validators"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Stake Distribution",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "hauptbuch_stake_distribution",
+            "legendFormat": "Stake %"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Network Latency",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "hauptbuch_network_latency_p99",
+            "legendFormat": "P99 Latency"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

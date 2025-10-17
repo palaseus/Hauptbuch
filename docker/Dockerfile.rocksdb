@@ -1,0 +1,20 @@
+# RocksDB Dockerfile for Hauptbuch
+FROM debian:bookworm-slim
+
+# Install RocksDB dependencies
+RUN apt-get update && apt-get install -y \
+    librocksdb-dev \
+    libsnappy-dev \
+    liblz4-dev \
+    libzstd-dev \
+    libbz2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create data directory
+RUN mkdir -p /data
+
+# Expose RocksDB port (if needed)
+EXPOSE 8080
+
+# Default command
+CMD ["sleep", "infinity"]

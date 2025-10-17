@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Hauptbuch Node
+  hauptbuch-node:
+    build: .
+    container_name: hauptbuch-node
+    ports:
+      - "30303:30303"  # P2P
+      - "8080:8080"    # RPC
+      - "8081:8081"    # WebSocket
+    environment:
+      - HAUPTBUCH_ENVIRONMENT=development
+      - HAUPTBUCH_LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8080
+      - WS_PORT=8081
+      - DATABASE_URL=rocksdb://./data/hauptbuch.db
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./data:/app/data
+      - ./config.toml:/app/config.toml
+    depends_on:
+      - redis
+      - rocksdb
+    networks:
+      - hauptbuch-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: hauptbuch-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - hauptbuch-network
+
+  # RocksDB (via custom container)
+  rocksdb:
+    build:
+      context: .
+      dockerfile: Dockerfile.rocksdb
+    container_name: hauptbuch-rocksdb
+    volumes:
+      - rocksdb-data:/data
+    networks:
+      - hauptbuch-network
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: hauptbuch-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - hauptbuch-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: hauptbuch-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - hauptbuch-network
+
+  # Development Tools
+  hauptbuch-dev:
+    build: .
+    container_name: hauptbuch-dev
+    command: ["bash", "-c", "cargo build && cargo test"]
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - hauptbuch-network
+
+  # Python Testing Environment
+  hauptbuch-python-test:
+    build: .
+    container_name: hauptbuch-python-test
+    command: ["bash", "-c", "cd /app && python -m venv .venv && source .venv/bin/activate && pip install pytest pytest-asyncio aiohttp websockets psutil eth-account maturin && python -m pytest tests/"]
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - hauptbuch-network
+
+volumes:
+  redis-data:
+  rocksdb-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  hauptbuch-network:
+    driver: bridge

@@ -1,0 +1,243 @@
+name: Hauptbuch Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, 3.10, 3.11]
+        node-version: [16, 18, 20]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Set up Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev cmake libclang-dev
+    
+    - name: Install Python dependencies
+      run: |
+        cd tests
+        pip install -r utils/requirements.txt
+    
+    - name: Install Node.js dependencies
+      run: |
+        cd tests/contracts
+        npm install
+    
+    - name: Build Hauptbuch
+      run: |
+        cargo build --release
+    
+    - name: Run infrastructure tests
+      run: |
+        cd tests
+        ./run_all_tests.sh --category infrastructure
+    
+    - name: Run integration tests
+      run: |
+        cd tests
+        ./run_all_tests.sh --category integration
+    
+    - name: Run contract tests
+      run: |
+        cd tests
+        ./run_all_tests.sh --category contracts
+    
+    - name: Run API tests
+      run: |
+        cd tests
+        ./run_all_tests.sh --category api
+    
+    - name: Run performance tests
+      run: |
+        cd tests
+        ./run_all_tests.sh --category performance
+    
+    - name: Run security tests
+      run: |
+        cd tests
+        ./run_all_tests.sh --category security
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.python-version }}-${{ matrix.node-version }}
+        path: tests/test-results/
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      if: matrix.python-version == '3.11' && matrix.node-version == '20'
+      with:
+        file: tests/test-results/coverage-report.html
+        flags: unittests
+        name: codecov-umbrella
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+    
+    - name: Run security audit
+      run: |
+        cargo audit
+    
+    - name: Run clippy
+      run: |
+        cargo clippy --all-targets -- -D warnings
+    
+    - name: Run rustfmt
+      run: |
+        cargo fmt --all --check
+
+  performance-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev cmake libclang-dev
+    
+    - name: Build Hauptbuch
+      run: |
+        cargo build --release
+    
+    - name: Run benchmarks
+      run: |
+        cargo bench
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: target/criterion/
+
+  docker-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Build Docker image
+      run: |
+        docker build -t hauptbuch:test .
+    
+    - name: Run Docker tests
+      run: |
+        docker run --rm hauptbuch:test ./tests/run_all_tests.sh --all
+    
+    - name: Test Docker health
+      run: |
+        docker run -d --name hauptbuch-test -p 8080:8080 hauptbuch:test
+        sleep 30
+        curl -f http://localhost:8080/status || exit 1
+        docker stop hauptbuch-test
+        docker rm hauptbuch-test
+
+  cross-platform:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+    
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev cmake libclang-dev
+    
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install pkg-config cmake
+    
+    - name: Install dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install cmake
+    
+    - name: Build Hauptbuch
+      run: |
+        cargo build --release
+    
+    - name: Run basic tests
+      run: |
+        cd tests
+        ./run_all_tests.sh --category integration
+
+  notification:
+    needs: [test, security-audit, performance-benchmark, docker-test, cross-platform]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Notify on success
+      if: needs.test.result == 'success' && needs.security-audit.result == 'success'
+      run: |
+        echo "All tests passed successfully!"
+    
+    - name: Notify on failure
+      if: needs.test.result == 'failure' || needs.security-audit.result == 'failure'
+      run: |
+        echo "Some tests failed. Please check the logs."
